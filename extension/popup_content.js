@@ -71,6 +71,7 @@ chrome.storage.sync.get(keys, (data) => {
 })
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
+    console.log("New Text Detected")
     if (areaName === 'sync' && changes.item) {
         textToBlur = changes.item.newValue || ""
         console.log("New text to blur: ", textToBlur)
