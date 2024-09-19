@@ -4,21 +4,23 @@ const blurFilter = "blur(6px)"
 let textToBlur = ""
 
 // Search this DOM node for text to blur and blur the parent element if found.
-function processNode(node) {
+function processNode(node, clearAll) {
+    console.log(clearAll)
     if (node.childNodes.length > 0) {
-        Array.from(node.childNodes).forEach(processNode)
+        Array.from(node.childNodes).forEach((node) => processNode(node, clearAll))
     }
     if (node.nodeType === Node.TEXT_NODE &&
         node.textContent !== null && node.textContent.trim().length > 0) {
         const parent = node.parentElement
-        if (parent !== null &&
-            (parent.tagName === 'SCRIPT' || parent.style.filter === blurFilter)) {
-            if (!node.textContent.includes(textToBlur))
-            parent.style.filter = "none"
+        if (parent !== null && parent.style.filter === blurFilter) {
+            if (!node.textContent.includes(textToBlur) || clearAll) {
+                console.log("Removing filter")
+                parent.style.filter = "none"
+            }
             // Already blurred
             return
         }
-        if (node.textContent.includes(textToBlur)) {
+        if (!clearAll  && node.textContent.includes(textToBlur)) {
             blurElement(parent)
         }
     }
@@ -34,24 +36,27 @@ function blurElement(elem) {
 const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
         if (mutation.addedNodes.length > 0) {
-            mutation.addedNodes.forEach(processNode)
+            mutation.addedNodes.forEach((node) => processNode(node))
         } else {
             processNode(mutation.target)
         }
     })
 })
 
-function startObserving() {
+function startObserving(clear = false) {
     console.log("Running")
-    observer.observe(document, {
-        attributes: false,
-        characterData: true,
-        childList: true,
-        subtree: true,
-    })
+    if (!clear) {
+        observer.observe(document, {
+            attributes: false,
+            characterData: true,
+            childList: true,
+            subtree: true,
+        })
+    }
     // Loop through all elements on the page for initial processing.
-    processNode(document)
+    processNode(document, clear)
 }
+
 
 // Enable the content script by default.
 let enabled = true
@@ -71,15 +76,30 @@ chrome.storage.sync.get(keys, (data) => {
 })
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
-    console.log("New Text Detected")
-    if (areaName === 'sync' && changes.item) {
-        textToBlur = changes.item.newValue || ""
-        console.log("New text to blur: ", textToBlur)
+    console.log("Detected Storage Change")
+    if (areaName === 'sync') {
+        if (changes.item) {
+            textToBlur = changes.item.newValue || ""
+            console.log("New text to blur: ", textToBlur)
 
-        observer.disconnect()
+            observer.disconnect()
 
-        if (enabled && textToBlur.trim().length > 0) {
-            startObserving()
+            if (enabled && textToBlur.trim().length > 0) {
+                startObserving()
+            }
+        }
+        if (changes.enabled) {
+            enabled = changes.enabled.newValue;
+
+            if (!enabled) {
+                console.log("Extension disabled, removing blurs")
+                observer.disconnect()
+                startObserving(true);
+            } else {
+                console.log("Extension enabled, starting blur process");
+                observer.disconnect();
+                startObserving()
+            }
         }
     }
-})
+});
